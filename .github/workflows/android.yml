@@ -1,4 +1,4 @@
-name: CI: Android build (JDK 17 + SDK + licenses) and upload APK
+name: ci: android build + upload artifact
 
 on:
   push:
@@ -16,23 +16,45 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
+      - name: Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
       - name: Install Android SDK + accept licenses
         uses: android-actions/setup-android@v3
-      - run: yes | sdkmanager --licenses
+
+      - name: Accept licenses (again, just in case)
+        run: yes | sdkmanager --licenses
+
+      # مهم: بعض المشاريع تحتاج local.properties فيه sdk.dir
+      - name: Write local.properties (sdk.dir)
+        run: |
+          echo "sdk.dir=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" > local.properties
+          cat local.properties
+
+      # نزّل حِزم آمنة تناسب أغلب المشاريع (لو المشروع عايز غيرها Gradle هيجيبها)
+      - name: Install common platforms & build-tools
+        run: |
+          sdkmanager "platform-tools" \
+                     "platforms;android-34" \
+                     "build-tools;34.0.0" || true
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Gradle version
+        run: ./gradlew --version
 
       - name: Build debug APK
         run: ./gradlew --no-daemon clean assembleDebug
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g"
 
+      # لو الموديول اسمه app، ده المسار الصحيح. لو مختلف هنعدله بعد أول رن.
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: traccar-client-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/**/debug/*.apk
